@@ -64,6 +64,7 @@
                     <!-- <input type="" id="details" name="details" > -->
                 </div>
                 <div class="input-item form-child" >
+                    <label for="category"> Category : </label>
                    <select name="category" id="category">
                         <% categorys.forEach( category => { %>
                             <option value="<%= category._id %>" label="<%= category.categoryName %>"  ></option>

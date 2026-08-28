@@ -20,9 +20,16 @@ const router = express.Router();
 
 
 const multer = require('multer');
+const fs = require('fs');
+
+const dir = './public/products';
+if (!fs.existsSync(dir)){
+    fs.mkdirSync(dir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
     destination: function(req, file, cb) {
-      cb(null, './public/products');
+      cb(null, dir);
     },
     filename: function(req, file, cb) {
       const fileName = Date.now() + file.originalname;

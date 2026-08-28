@@ -1,38 +1,21 @@
-
-
-
-
-.msg-box
-{
+.msg-box {
     display: none;
 }
 
-
-
-
-
-.msg-box-error
-{
+.msg-box-error {
     width: 90%;
     padding: 10px;
     margin: 10px;
-    background-color: rgba(255, 255, 255, 0.493);
+    background-color: rgba(211, 148, 148, 0.493);
     display: flex;
     align-items: center;
     justify-content: center;
-    /* border-radius: 10px; */
     color: red;
     text-align: center;
     font-weight: bold;    
 }
 
-
-
-
-
-
-.msg-box-success
-{
+.msg-box-success {
     width: 90%;
     padding: 10px;
     margin: 10px;
@@ -40,8 +23,20 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    /* border-radius: 10px; */
     color: green;
     text-align: center;
     font-weight: bold;    
+}
+
+.msg-box-message {
+    width: 90%;
+    padding: 10px;
+    margin: 10px;
+    background-color: rgba(144, 238, 144, 0.548);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: green;
+    text-align: center;
+    font-weight: bold;
 }
