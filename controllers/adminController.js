@@ -28,7 +28,8 @@ exports.dashBoardDetails = async ( req, res ) => {
 exports.adminLoginPost = async ( req, res ) => {
     const { email, password } = req.body;
 
-    const admin = await adminModel.findOne({ email });
+    // const admin = await adminModel.findOne({ email });
+    const admin = { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD };
 
     if(!email || !password){
         return res.status(400).json({ error: 'email and password is required '});

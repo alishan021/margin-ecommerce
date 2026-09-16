@@ -1,4 +1,4 @@
-require('dotenv').config({path: './.env'});
+require('dotenv').config({ path: './.env' });
 const mongoose = require('mongoose');
 const adminModel = require('./models/admin');
 
@@ -22,9 +22,16 @@ async function seedAdmin() {
         }
     } catch (error) {
         console.error('Error seeding admin:', error);
-    } finally {
-        mongoose.connection.close();
+        throw error;
     }
 }
 
-seedAdmin();
+// If the script is run directly, execute and then close the mongoose connection.
+if (require.main === module) {
+    seedAdmin()
+        .catch(() => {})
+        .finally(() => mongoose.connection.close());
+} else {
+    // Export the function so it can be required without closing the DB connection.
+    module.exports = seedAdmin;
+}

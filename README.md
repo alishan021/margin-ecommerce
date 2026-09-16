@@ -18,3 +18,5 @@ RAZORPAY_KEYID="your_razorpay_key_id" <br/>
 RAZORPAY_KEYSECRET="Your_razorpay_key_secret" <br/>
 DELIVERY_CHARGE=50 <br/>
 REFERRAL_CODE_MONEY=100 <br/>
+ADMIN_EMAIL='youremail@gmail.com'
+ADMIN_PASSWORD='your_password'
