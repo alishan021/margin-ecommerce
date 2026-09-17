@@ -56,7 +56,7 @@
                                     <div>
                                         <% order.products.forEach(product => { %>
                                             <div class="image-and-name">
-                                                <img class="product-img" src="/products/<%= product.productId.images[0] %>" alt="product image">
+                                                <img class="product-img" src="<%= productImageUrl(product.productId.images[0]) %>" alt="product image">
                                                 <span><%= product.productId.name %></span>
                                                 <span>(<%= product.quantity %>)</span>
                                                 <br>

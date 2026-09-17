@@ -7,8 +7,10 @@ const bcrypt = require('bcrypt');
 const categoryModel = require('../models/category');
 const orderModel = require('../models/order');
 const couponModel = require('../models/coupons');
-const { search } = require('../routes/userRoute');
+const walletTopUpModel = require('../models/walletTopUp');
 const PDFDocument = require('pdfkit');
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
 
 
 
@@ -886,6 +888,9 @@ exports.addressUpdatePatch = async (req, res) => {
 
 exports.checkoutPost = async (req, res) => {
     try {
+      if (!req.session.user?._id || req.params.userId !== req.session.user._id.toString()) {
+        return res.status(403).json({ error: 'You may only place an order for your own account.' });
+      }
       const user = await userModel.findById(req.session.user._id);
       if(!user) return res.status(400).json({ error: 'User not found, Login again'});
     //   if(typeof Number(req.body.pincode) !== 'number' ) return res.status(400).json({ error: 'pincode must be number'});
@@ -905,10 +910,20 @@ exports.checkoutPost = async (req, res) => {
         totalPrice += itemPrice * item.count;
       });
       let originalPrice = totalPrice;
-      if(req.body.discountPrice) totalPrice -= req.body.discountPrice;
+      const coupon = await applyCheckoutCoupon(user._id, req.body.couponCode, totalPrice);
+      totalPrice = coupon.total;
 
       if(totalPrice > 1000 && req.body.paymentMethod === 'COD' ) return res.status(400).json({ success: false, error: 'Cash On Delivery is not available for products more than 1000Rs'});
       if(totalPrice < 500 ) totalPrice += parseInt(process.env.DELIVERY_CHARGE);
+      if (req.body.paymentMethod === 'razorpay') {
+        const paymentIsVerified = await verifyRazorpayPayment({
+          providerOrderId: req.body.orderId,
+          paymentId: req.body.razorpayPaymentId,
+          signature: req.body.razorpaySignature,
+          expectedAmount: Math.round(totalPrice * 100),
+        });
+        if (!paymentIsVerified) return res.status(400).json({ error: 'Payment could not be verified.' });
+      }
   
       const products = [];
       for (const item of productDetails) {
@@ -939,7 +954,7 @@ exports.checkoutPost = async (req, res) => {
         originalPrice,
         totalPrice,
         paymentMethod: req.body.paymentMethod || 'COD',
-        couponUsed: req.body.couponCode || '',
+        couponUsed: coupon.couponCode,
         status: "Processing",
         orderValid: true,
         rzr_orderId: req.body.orderId
@@ -949,11 +964,12 @@ exports.checkoutPost = async (req, res) => {
       if (savedOrder) {
         user.cart = [];
         await user.save();
-        if (req.body.couponCode) await couponModel.updateOne({ couponCode: req.body.couponCode }, { $push: { usedUsers: user._id } });
+        if (coupon.couponCode) await couponModel.updateOne({ couponCode: coupon.couponCode }, { $push: { usedUsers: user._id } });
         return res.json({ success: true, message: 'Order created successfully' });
       }
     } catch (err) {
       console.error(err);
+      return res.status(err.statusCode || 500).json({ error: 'Unable to place order.' });
     }
   };
 
@@ -962,7 +978,8 @@ exports.checkoutPost = async (req, res) => {
 exports.failedPayment = async ( req, res ) => {
     const orderId = req.query.orderId;
     try{
-        const order = await orderModel.findById(orderId);
+        const order = await orderModel.findOne({ _id: orderId, userId: req.session.user._id });
+        if (!order) return res.status(404).json({ error: 'Order not found.' });
         res.status(200).json({ order});
     }catch(err){
         console.log(err);
@@ -971,10 +988,19 @@ exports.failedPayment = async ( req, res ) => {
 
 
 exports.paymentPendingPost = async ( req, res ) => {
-    const { userId, rzr_orderId } = req.body;
+    const { rzr_orderId, razorpayPaymentId, razorpaySignature } = req.body;
     try{
-        const order = await orderModel.findOne({ rzr_orderId: rzr_orderId });
+        if (!req.session.user?._id) return res.status(401).json({ error: 'Please log in again.' });
+        const order = await orderModel.findOne({ rzr_orderId, userId: req.session.user._id });
         if(!order) return res.status(404).json({ error: "Order not found" });
+        if (!order.pending) return res.status(409).json({ error: 'Order payment has already been processed.' });
+        const paymentIsVerified = await verifyRazorpayPayment({
+          providerOrderId: order.rzr_orderId,
+          paymentId: razorpayPaymentId,
+          signature: razorpaySignature,
+          expectedAmount: Math.round(order.totalPrice * 100),
+        });
+        if (!paymentIsVerified) return res.status(400).json({ error: 'Payment could not be verified.' });
         order.pending = false;
         order.paymentMethod = "razorpay";
         const result = await order.save();
@@ -982,6 +1008,7 @@ exports.paymentPendingPost = async ( req, res ) => {
         res.status(200).json({ success: true, message: 'Order Payment was successful.' });
     }catch(err){
         console.error(`Error at paymentPendingPost ${err}`)
+        return res.status(500).json({ error: 'Unable to verify payment.' });
     }
 }
 
@@ -1002,6 +1029,9 @@ exports.validateCheckoutAddress = async ( req, res ) => {
 
 exports.checkoutErrorPost = async ( req, res ) => {
     try {
+        if (!req.session.user?._id || req.params.userId !== req.session.user._id.toString()) {
+          return res.status(403).json({ error: 'You may only create an order for your own account.' });
+        }
         const user = await userModel.findById(req.session.user._id);
         if(!user) return res.status(400).json({ error: 'User not found, Login again'});
         // if(typeof Number(req.body.pincode) !== 'number' ) return res.status(400).json({ error: 'pincode must be number'});
@@ -1021,7 +1051,8 @@ exports.checkoutErrorPost = async ( req, res ) => {
           totalPrice += itemPrice * item.count;
         });
         let originalPrice = totalPrice;
-        if(req.body.discountPrice) totalPrice -= req.body.discountPrice;
+        const coupon = await applyCheckoutCoupon(user._id, req.body.couponCode, totalPrice);
+        totalPrice = coupon.total;
       
         const products = [];
         for (const item of productDetails) {
@@ -1052,7 +1083,7 @@ exports.checkoutErrorPost = async ( req, res ) => {
           originalPrice,
           totalPrice,
           paymentMethod: "Pending",
-          couponUsed: req.body.couponCode || '',
+          couponUsed: coupon.couponCode,
           pending: true,
           status: "Pending",
           orderValid: true,
@@ -1063,11 +1094,12 @@ exports.checkoutErrorPost = async ( req, res ) => {
         if (savedOrder) {
           user.cart = [];
           await user.save();
-          if (req.body.couponCode) await couponModel.updateOne({ couponCode: req.body.couponCode }, { $push: { usedUsers: user._id } });
+          if (coupon.couponCode) await couponModel.updateOne({ couponCode: coupon.couponCode }, { $push: { usedUsers: user._id } });
           return res.json({ success: true, message: 'Order created successfully' });
         }
       } catch (err) {
         console.error(err);
+        return res.status(err.statusCode || 500).json({ error: 'Unable to create pending order.' });
       }
 }
 
@@ -1190,22 +1222,177 @@ exports.orderReturnPatch = async (req, res) => {
 
 
 
-exports.addWalletAmount = async ( req, res ) => {
-    const userId = req.params.userId;
-    const amount = req.params.amount;
-    try{
-        if(!userId) return res.status(403).json({ error: 'user not found, login again' });
-        if(!amount) return res.status(403).json({ error: 'Please enter an amount' });
-        const user = await userModel.findById(userId);
-        if(!user.wallet.amount) user.wallet.amount = 0;
-        user.wallet.amount += parseInt(amount);
-        await user.save();
-        return res.status(200).json({ success: true, message: `${amount}Rs added to wallet` });
-    }catch(error){
-        console.log(error);
-        return res.status(500).json({ error: 'Internal server error' });
-    }
+const MIN_WALLET_TOP_UP_RUPEES = 1;
+const MAX_WALLET_TOP_UP_RUPEES = 100000;
+
+async function verifyRazorpayPayment({ providerOrderId, paymentId, signature, expectedAmount }) {
+    if (!providerOrderId || !paymentId || !signature || !Number.isSafeInteger(expectedAmount)) return false;
+
+    const expectedSignature = crypto.createHmac('sha256', process.env.RAZORPAY_KEYSECRET)
+        .update(`${providerOrderId}|${paymentId}`).digest('hex');
+    const actualSignature = Buffer.from(signature, 'utf8');
+    const expectedSignatureBuffer = Buffer.from(expectedSignature, 'utf8');
+    if (actualSignature.length !== expectedSignatureBuffer.length || !crypto.timingSafeEqual(actualSignature, expectedSignatureBuffer)) return false;
+
+    const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEYID, key_secret: process.env.RAZORPAY_KEYSECRET });
+    const payment = await razorpay.payments.fetch(paymentId);
+    return payment.status === 'captured' && payment.order_id === providerOrderId
+        && payment.amount === expectedAmount && payment.currency === 'INR';
 }
+
+async function applyCheckoutCoupon(userId, couponCode, subtotal) {
+    if (!couponCode) return { total: subtotal, couponCode: '' };
+    const now = new Date();
+    const coupon = await couponModel.findOne({
+        couponCode,
+        isActive: true,
+        startDate: { $lte: now },
+        endDate: { $gte: now },
+        usedUsers: { $ne: userId },
+    });
+    if (!coupon || subtotal < coupon.purchaseAmount) {
+        throw Object.assign(new Error('Coupon is invalid or cannot be applied to this order.'), { statusCode: 400 });
+    }
+    return { total: Math.max(0, subtotal - coupon.discountAmount), couponCode: coupon.couponCode };
+}
+
+exports.createWalletTopUp = async (req, res) => {
+    try {
+        if (!req.session.user?._id) {
+            return res.status(401).json({ error: 'Please log in again.' });
+        }
+        const amountRupees = Number(req.body.amount);
+        if (!Number.isSafeInteger(amountRupees) || amountRupees < MIN_WALLET_TOP_UP_RUPEES || amountRupees > MAX_WALLET_TOP_UP_RUPEES) {
+            return res.status(400).json({ error: `Amount must be a whole number between ${MIN_WALLET_TOP_UP_RUPEES} and ${MAX_WALLET_TOP_UP_RUPEES} rupees.` });
+        }
+
+        if (!process.env.RAZORPAY_KEYID || !process.env.RAZORPAY_KEYSECRET) {
+            return res.status(503).json({ error: 'Wallet top-ups are not configured.' });
+        }
+
+        const amount = amountRupees * 100;
+        const razorpay = new Razorpay({
+            key_id: process.env.RAZORPAY_KEYID,
+            key_secret: process.env.RAZORPAY_KEYSECRET,
+        });
+        const providerOrder = await razorpay.orders.create({
+            amount,
+            currency: 'INR',
+            receipt: `wallet_${crypto.randomBytes(16).toString('hex')}`,
+            notes: { purpose: 'wallet_top_up', userId: req.session.user._id.toString() },
+        });
+
+        const topUp = await walletTopUpModel.create({
+            userId: req.session.user._id,
+            amount,
+            currency: 'INR',
+            providerOrderId: providerOrder.id,
+        });
+
+        return res.status(201).json({
+            topUpId: topUp._id,
+            orderId: providerOrder.id,
+            amount: providerOrder.amount,
+            currency: providerOrder.currency,
+            keyId: process.env.RAZORPAY_KEYID,
+        });
+    } catch (error) {
+        console.error('Unable to create wallet top-up:', error);
+        return res.status(500).json({ error: 'Unable to start wallet top-up.' });
+    }
+};
+
+exports.razorpayWalletWebhook = async (req, res) => {
+    const signature = req.get('x-razorpay-signature');
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
+
+    if (!webhookSecret || !signature || rawBody.length === 0) {
+        return res.status(400).json({ error: 'Invalid webhook request.' });
+    }
+
+    const expectedSignature = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(rawBody)
+        .digest('hex');
+
+    const signatureBuffer = Buffer.from(signature, 'utf8');
+    const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+        return res.status(400).json({ error: 'Invalid webhook signature.' });
+    }
+
+    let event;
+    try {
+        event = JSON.parse(rawBody.toString('utf8'));
+    } catch (error) {
+        return res.status(400).json({ error: 'Invalid webhook payload.' });
+    }
+
+    // Only a captured payment can release wallet value. Other events are
+    // acknowledged so Razorpay does not retry them unnecessarily.
+    if (event.event !== 'payment.captured') return res.status(200).json({ received: true });
+
+    const payment = event.payload?.payment?.entity;
+    if (!payment?.id || !payment.order_id || payment.status !== 'captured') {
+        return res.status(400).json({ error: 'Invalid captured-payment payload.' });
+    }
+
+    const mongoSession = await userModel.startSession();
+    try {
+        await mongoSession.withTransaction(async () => {
+            const topUp = await walletTopUpModel.findOne({ providerOrderId: payment.order_id }).session(mongoSession);
+            if (!topUp) throw Object.assign(new Error('Unknown wallet top-up.'), { statusCode: 404 });
+
+            // Idempotency: duplicate delivery or an already-used payment cannot
+            // create another credit.
+            if (topUp.status === 'credited') return;
+            if (payment.amount !== topUp.amount || payment.currency !== topUp.currency) {
+                throw Object.assign(new Error('Payment amount or currency does not match top-up.'), { statusCode: 400 });
+            }
+
+            const existingPayment = await walletTopUpModel.findOne({ providerPaymentId: payment.id }).session(mongoSession);
+            if (existingPayment && existingPayment._id.toString() !== topUp._id.toString()) {
+                throw Object.assign(new Error('Payment is already associated with another top-up.'), { statusCode: 409 });
+            }
+
+            const amountRupees = topUp.amount / 100;
+            const user = await userModel.findOneAndUpdate(
+                { _id: topUp.userId },
+                { $inc: { 'wallet.amount': amountRupees } },
+                { new: true, session: mongoSession }
+            );
+            if (!user) throw Object.assign(new Error('Wallet owner no longer exists.'), { statusCode: 404 });
+
+            await userModel.updateOne(
+                { _id: user._id },
+                {
+                    $set: { 'wallet.modifiedAt': new Date() },
+                    $push: {
+                        'wallet.walletHistory': {
+                            amount: amountRupees,
+                            balance: user.wallet.amount,
+                            transactionType: 'credit',
+                            createdAt: new Date(),
+                        },
+                    },
+                },
+                { session: mongoSession }
+            );
+
+            topUp.status = 'credited';
+            topUp.providerPaymentId = payment.id;
+            topUp.creditedAt = new Date();
+            await topUp.save({ session: mongoSession });
+        });
+        return res.status(200).json({ received: true });
+    } catch (error) {
+        console.error('Unable to settle wallet top-up:', error);
+        return res.status(error.statusCode || 500).json({ error: 'Unable to process wallet top-up.' });
+    } finally {
+        await mongoSession.endSession();
+    }
+};
 
 
 

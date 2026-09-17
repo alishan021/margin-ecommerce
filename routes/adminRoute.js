@@ -20,25 +20,16 @@ const router = express.Router();
 
 
 const multer = require('multer');
-const fs = require('fs');
-
-const dir = './public/products';
-if (!fs.existsSync(dir)){
-    fs.mkdirSync(dir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-    destination: function(req, file, cb) {
-      cb(null, dir);
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+            return cb(new Error('Only image files are allowed.'));
+        }
+        cb(null, true);
     },
-    filename: function(req, file, cb) {
-      const fileName = Date.now() + file.originalname;
-      cb(null, fileName );
-    },
-
 });
-
-const upload = multer({ storage: storage });
 
 
 
@@ -53,37 +44,37 @@ router.get('/dashboard/data/custom', adminAuth.adminSessionNo, adminController.c
 
 // To get user list for admin;
 router.get('/users', adminAuth.adminSessionNo, admUserController.adminUsersGet );
-router.post('/user-status', admUserController.userStatusPost );
+router.post('/user-status', adminAuth.adminSessionNo, admUserController.userStatusPost );
 
 
 // admin category
 router.get('/category', adminAuth.adminSessionNo, admCategoryController.categoryGet );
-router.post('/category',  admCategoryController.createCategoryPost );
-router.patch('/category',  admCategoryController.categoryListEditPatch );
-router.delete('/category/:id',  admCategoryController.categoryDelete );
+router.post('/category', adminAuth.adminSessionNo,  admCategoryController.createCategoryPost );
+router.patch('/category', adminAuth.adminSessionNo,  admCategoryController.categoryListEditPatch );
+router.delete('/category/:id', adminAuth.adminSessionNo,  admCategoryController.categoryDelete );
 router.get('/category/:categoryId', adminAuth.adminSessionNo, admCategoryController.categoryUpdateGet );
-router.patch('/category/update/:categoryId', admCategoryController.categoryUpdatePut );
+router.patch('/category/update/:categoryId', adminAuth.adminSessionNo, admCategoryController.categoryUpdatePut );
 
 
 // admin product 
 router.get('/products', adminAuth.adminSessionNo,  admProductController.getProducts );
 router.get('/products/add', adminAuth.adminSessionNo,  admProductController.addProductGet );
-router.patch('/product', admProductController.productListEditPatch );
-router.delete('/product/:id', admProductController.productDelete );
+router.patch('/product', adminAuth.adminSessionNo, admProductController.productListEditPatch );
+router.delete('/product/:id', adminAuth.adminSessionNo, admProductController.productDelete );
 
 
-router.post('/products/add', upload.array('images', 6 ), admProductController.productsAdd );
+router.post('/products/add', adminAuth.adminSessionNo, upload.array('images', 6 ), admProductController.productsAdd );
 router.get('/products/edit/:productId', adminAuth.adminSessionNo, admProductController.productEditGet );
-router.post('/products/edit/:productId',  upload.array('images', 6 ), admProductController.productEditPost );
-router.delete('/products/delete-image', admProductController.productImageDelete );
+router.post('/products/edit/:productId', adminAuth.adminSessionNo,  upload.array('images', 6 ), admProductController.productEditPost );
+router.delete('/products/delete-image', adminAuth.adminSessionNo, admProductController.productImageDelete );
 
 router.get('/order', adminAuth.adminSessionNo, admOrdersController.orderGet );
-router.patch('/order-status', admOrdersController.orderStatusPatch );
+router.patch('/order-status', adminAuth.adminSessionNo, admOrdersController.orderStatusPatch );
 
 router.get('/coupon', adminAuth.adminSessionNo, admCouponController.couponGet );
 router.get('/coupon/add', adminAuth.adminSessionNo, admCouponController.addCouponGet );
-router.post('/coupon/add', admCouponController.addCouponPost );
-router.delete('/coupon/delete/:couponId', admCouponController.couponDelete );
+router.post('/coupon/add', adminAuth.adminSessionNo, admCouponController.addCouponPost );
+router.delete('/coupon/delete/:couponId', adminAuth.adminSessionNo, admCouponController.couponDelete );
 
 router.get('/sales-report/', adminAuth.adminSessionNo, admSalesReportController.salesReportGet );
 router.get('/sales-report/:reportType', adminAuth.adminSessionNo, admSalesReportController.customSalesReportGet);
@@ -92,8 +83,8 @@ router.get('/sales-report-total', adminAuth.adminSessionNo, admSalesReportContro
 router.get('/sales/excel/:reportType', adminAuth.adminSessionNo, admSalesReportController.salesReportExcelGet );
 
 router.get('/offer-module', adminAuth.adminSessionNo, admOfferModule.offerModuleGet );
-router.post('/offer-module', admOfferModule.offerModulePost );
-router.delete('/offer/delete/:offerId', admOfferModule.deleteOffer );
+router.post('/offer-module', adminAuth.adminSessionNo, admOfferModule.offerModulePost );
+router.delete('/offer/delete/:offerId', adminAuth.adminSessionNo, admOfferModule.deleteOffer );
 
 router.get('/logout', adminController.logout );
 

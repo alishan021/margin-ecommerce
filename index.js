@@ -15,9 +15,15 @@ const app = express();
 
 app.set('view engine', 'ejs');
 app.set('views', ['./views/admin', './views/user' ]);
+app.locals.productImageUrl = (image) => {
+    if (!image) return '';
+    return /^https?:\/\//i.test(image) ? image : `/products/${encodeURIComponent(image)}`;
+};
 
 
 app.use(morgan('dev'))
+// Razorpay signs the exact raw body. This must run before express.json().
+app.post('/payments/razorpay/wallet-webhook', express.raw({ type: 'application/json' }), require('./controllers/userControllerrr').razorpayWalletWebhook);
 app.use(cors());
 app.use(express.static('public'));
 app.use(express.json());

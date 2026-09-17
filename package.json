@@ -6,7 +6,8 @@
   "scripts": {
     "test": "test",
     "start": "node --watch server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "migrate:product-images": "node scripts/migrateProductImagesToCloudinary.js"
   },
   "repository": {
     "type": "git",

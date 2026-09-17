@@ -82,7 +82,7 @@
                     <div class="image-preview-container-old">
                         <% product.images.forEach((image, index ) => { %>
                             <div class="image-preview-div">
-                                <img src="/products/<%= image %>" class="image-preview" alt="Product Image">
+                                <img src="<%= productImageUrl(image) %>" class="image-preview" alt="Product Image">
                                 <i class="fa-solid fa-trash img-delete-btn" data-image-url="<%= image %>" data-product-id="<%= product._id %>"></i>
                             </div>
                         <% }); %>

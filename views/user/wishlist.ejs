@@ -65,7 +65,7 @@
 									<div class="product">
 										<figure class="product-media">
 											<a href="/product/<%= product.product_id._id %>">
-												<img src="/products/<%= product.product_id.images[0] %>" alt="Product image">
+																<img src="<%= productImageUrl(product.product_id.images[0]) %>" alt="Product image">
 											</a>
 										</figure>
 

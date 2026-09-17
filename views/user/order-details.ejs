@@ -34,7 +34,7 @@
                     <div>
                         <% order.products.forEach(( product ) => { %>
                             <div class="d-flex justify-content-between border border-white p-5 my-3 align-items-center">
-                                <div><img src="/products/<%= product.productId.images[0] %>" alt="product image"></div>
+                                <div><img src="<%= productImageUrl(product.productId.images[0]) %>" alt="product image"></div>
                                 <!-- <div>< product.productId.name %>hellow</div> -->
                                 <div><span><%= product.productId.name %></span></div>
                                 <div><span><%= product.quantity %></span></div>

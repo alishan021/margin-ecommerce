@@ -36,6 +36,8 @@ router.post('/login/validate-otp', userController.validateOtpPost );
 router.get('/login/new-password', userController.newPasswordGet );
 router.post('/login/new-password', userController.newPasswordPost );
 
+router.get('/logout', userController.userLogout );
+
 router.get('/product-list/:search', userController.productListGet );
 router.get('/product-list', userController.productListGet );
 router.get('/product-list/:sortBy', userController.productListGetSortBy );
@@ -44,7 +46,6 @@ router.get('/filter', userController.sortFilterGet );
 router.get('/product/:productId', userController.productGet );
 router.patch('/product/cart/:productId/:quantity', userController.productCartPatch );
 
-router.get('/logout', userController.userLogout );
 
 // User profile
 router.get('/dashboard', userAuth.userSessionNo, userController.dashboardGet );
@@ -53,8 +54,8 @@ router.patch('/address/:userId', userController.addAddressPatch );
 router.delete('/address/:addressId', userController.deleteAddress );
 router.get('/address/edit/:addressId', userController.addressEditGet );
 router.patch('/address/update/:addressId/:userId', userController.addressUpdatePatch );
-router.post('/wallet/:userId/:amount', userController.addWalletAmount);
-router.get('/order/invoice/:orderId', userController.genInvoice );
+router.post('/wallet/top-ups', userAuth.userSessionNo, userController.createWalletTopUp);
+router.get('/order/invoice/:orderId', userAuth.userSessionNo, userController.genInvoice );
 
 
 // User Cart
@@ -75,19 +76,19 @@ router.delete('/wishlist/remove/:productId', userController.wishlistDelete );
 
 // User checkout
 router.get('/checkout', userAuth.userSessionNo, userController.checkoutGet );
-router.post('/checkout/:userId', userController.checkoutPost );
-router.post('/checkout-error/:userId', userController.checkoutErrorPost );
+router.post('/checkout/:userId', userAuth.userSessionNo, userController.checkoutPost );
+router.post('/checkout-error/:userId', userAuth.userSessionNo, userController.checkoutErrorPost );
 router.get('/checkout-validation', userController.validateCheckoutAddress );
 router.get('/coupon/check/:couponCode/:productTotal', userController.couponCheck );
 router.get('/remove-coupon/:couponCode', userController.removeCoupon );
-router.get('/failed-payment', userController.failedPayment );
+router.get('/failed-payment', userAuth.userSessionNo, userController.failedPayment );
 
 
 router.get('/order/:orderId', userController.orderSingleGet );
 router.patch('/order/cancel/:orderId/:productId', userController.orderCancellationPath );
 router.patch('/order/return/:orderId/:productId', userController.orderReturnPatch );
 // router.post('/order-details/checkout', userController.orderFromOrderDetails );
-router.post('/payment-pending', userController.paymentPendingPost )
+router.post('/payment-pending', userAuth.userSessionNo, userController.paymentPendingPost )
 
 
 
@@ -96,11 +97,14 @@ var instance = new Razorpay({ key_id: process.env.RAZORPAY_KEYID, key_secret: pr
 
 
 
-router.post('/create/orderId', (req, res) => {
+router.post('/create/orderId', userAuth.userSessionNo, (req, res) => {
   console.log('Creating order using Razorpay');
 
   // Get the order details from the request body
-  const { amount } = req.body;
+  const amount = Number(req.body.amount);
+  if (!Number.isSafeInteger(amount) || amount < 100) {
+    return res.status(400).json({ error: 'A valid payment amount is required.' });
+  }
 
   // Create the order options
   const options = {
@@ -118,7 +122,7 @@ router.post('/create/orderId', (req, res) => {
     }
 
     console.log('Razorpay order created:', order);
-    return res.status(200).json({ orderId: order.id });
+    return res.status(200).json({ orderId: order.id, amount: order.amount, currency: order.currency, keyId: process.env.RAZORPAY_KEYID });
   });
 });
 

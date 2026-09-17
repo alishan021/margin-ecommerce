@@ -220,7 +220,7 @@
                                 <figure class="product-media">
                                     <span class="product-label label-limited">limited time sale</span>
                                     <a href="/product/<%= featuredProduct._id %>" class="p-5">
-                                        <img src="/products/<%= featuredProduct.images[0] %>" alt="Product image" class="product-image">
+                                        <img src="<%= productImageUrl(featuredProduct.images[0]) %>" alt="Product image" class="product-image">
                                     </a>
 
                                 </figure><!-- End .product-media -->
@@ -257,7 +257,7 @@
                                                 <figure class="product-media">
                                                     <span class="product-label label-sale">Sale</span>
                                                     <a href="/product/<%= product._id %>" class="p-3">
-                                                        <img src="/products/<%= product.images[0] %>" alt="Product image" class="product-image">
+                                                        <img src="<%= productImageUrl(product.images[0]) %>" alt="Product image" class="product-image">
                                                     </a>
 
                                                     <div class="product-action-vertical">
@@ -443,7 +443,7 @@
                             <figure class="product-media">
                                 <span class="product-label label-sale">Sale</span>
                                 <a href="/product/<%= product._id %>" class="p3">
-                                    <img src="/products/<%= product.images[0] %>" alt="Product image" class="product-image">
+                                    <img src="<%= productImageUrl(product.images[0]) %>" alt="Product image" class="product-image">
                                 </a>
 
                                 <div class="product-action-vertical">

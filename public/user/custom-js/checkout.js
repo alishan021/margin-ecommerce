@@ -220,15 +220,19 @@ $(document).ready(function() {
         $("button").show();
   
         var options = {
-          "key": "rzp_test_sHq1xf34I99z5x",
-          "amount": productTotal*100,
-          "currency": "USD",
+          "key": response.keyId,
+          "amount": response.amount,
+          "currency": response.currency,
           "name": "Margin",
           "description": "Test Transaction",
           "image": "https://example.com/your_logo",
           "order_id": orderId,
           "handler": function(response) {
-            checkoutSend( userId, formData, orderId );
+            checkoutSend(userId, {
+              ...formData,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+            }, orderId);
           },
           "prefill": {
             "name": "Muhammed Alishan",
@@ -263,5 +267,4 @@ $(document).ready(function() {
   });
   return true;
 }
-
 

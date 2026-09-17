@@ -113,7 +113,7 @@
                                             <figure class="product-media bg-white">
                                                 <span class="product-label label-new">New</span>
                                                 <a href="/product/<%= product._id %>">
-                                                    <img src="/products/<%= product.images[0] %>" alt="Product image" class="product-image px-5 py-5">
+                                                    <img src="<%= productImageUrl(product.images[0]) %>" alt="Product image" class="product-image px-5 py-5">
                                                 </a>
 
                                                 <div class="product-action-vertical">

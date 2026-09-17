@@ -115,7 +115,7 @@
 														<% order.products.forEach( product => { %>
 															<div class="d-flex align-items-center">
 																<div class="product-image-container">
-																	<img class="product-image" src="/products/<%= product.productId.images[0] %>" alt="product-image">
+											<img class="product-image" src="<%= productImageUrl(product.productId.images[0]) %>" alt="product-image">
 																</div>
 																<div class="product-name"><%= product.productId.name %></div>
 															</div>

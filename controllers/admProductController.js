@@ -10,7 +10,12 @@ const adminAuth = require('../middlewares/authAdmin');
 const userModel = require('../models/user');
 const categoryModel = require('../models/category');
 const productModel = require('../models/products');
-const multer = require('multer');
+const { uploadProductImage, deleteProductImage } = require('../services/cloudinary');
+
+async function uploadImages(files) {
+    const uploads = await Promise.all(files.map(uploadProductImage));
+    return uploads.map((upload) => upload.secure_url);
+}
 
 
 
@@ -55,29 +60,7 @@ exports.addProductGet = async ( req, res ) => {
 
 
 
-exports.addProductPost =  async ( req, res ) => {
-    try{
-        const images = [];
-        const { name, price, quantity, brand, size, color, description, category, details } = req.body;
-        const files = req.files.filename;
-        if (!files || files.length === 0) {
-           return res.json({ error: 'No Images selected'});
-        } else {
-            for (const file of files) {
-                images.push(files.filename);
-            }
-        }
-        const body = { name, price, quantity, brand, size, color, description, details, images: images };
-        const productResult = await productModel.create(body);
-        if(!productResult){
-            res.status(400).json({ error: `can't upload into database`});
-        }
-        res.status(201).json({ message: 'product Created successfully'})
-    }
-    catch(err){
-     console.log('error : ' + err );
-    }
- }
+exports.addProductPost = async (req, res) => exports.productsAdd(req, res);
 
 
 
@@ -85,6 +68,7 @@ exports.addProductPost =  async ( req, res ) => {
 exports.productDelete = async ( req, res ) => {
     const productId = req.params.id;
     const result = await productModel.findOneAndDelete({ _id: productId });
+    if (result) await Promise.allSettled(result.images.map(deleteProductImage));
     return res.json({ message: 'deleted'});
 }
 
@@ -93,17 +77,15 @@ exports.productDelete = async ( req, res ) => {
 
 
 exports.productsAdd = async ( req, res ) => {
+    let images = [];
     try{
          const { name, price,quantity, brand, size, color, description, category, details } = req.body;
          const colorsArray = color.split(',').map(c => c.trim());
  
-         const images = [];
          if(!name || !price || !quantity ) return res.status(400).json({ error: 'name price and quantity are required'});
          if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'atleast one image is required '}); 
  
-         for(const file of req.files){
-             images.push(file.filename)
-         }
+         images = await uploadImages(req.files);
  
          const product = {
              name,
@@ -123,7 +105,9 @@ exports.productsAdd = async ( req, res ) => {
          }
     }
     catch(error){
-         console.log(`product port error : ${error}`);
+         await Promise.allSettled(images.map(deleteProductImage));
+         console.error(`product post error: ${error.message}`);
+         return res.status(500).json({ success: false, error: 'Unable to upload product images.' });
     }
  
  } 
@@ -148,21 +132,19 @@ exports.productsAdd = async ( req, res ) => {
 
 
 exports.productEditPost = async ( req, res ) => {
+    let uploadedImages = [];
     try{
         const productId = req.params.productId;
         const dbProduct = await productModel.findById(productId);
         const { name, price,quantity, brand, size, color, description, category, details } = req.body;
         const colorsArray = color.split(',').map(c => c.trim());
 
-        let imagesArray = [];
+        let imagesArray = dbProduct.images;
         if(!name || !price || !quantity ) return res.status(400).json({ error: 'name price and quantity are required'});
 
-        if(req.files || req.files.length > 0)
-            for(const file of req.files){
-                imagesArray.push(file.filename)
-        }
-        if(req.files.length <= 0 ){
-            imagesArray = dbProduct.images;
+        if (req.files && req.files.length > 0) {
+            uploadedImages = await uploadImages(req.files);
+            imagesArray = uploadedImages;
         }
 
         const product = {
@@ -178,10 +160,17 @@ exports.productEditPost = async ( req, res ) => {
             details
         }
         const result = await productModel.findByIdAndUpdate( productId, product,  );
-        if(result) return res.status(201).json({ success: true, message: 'product updated successfully'});
+        if(result) {
+            if (uploadedImages.length) {
+                await Promise.allSettled(dbProduct.images.map(deleteProductImage));
+            }
+            return res.status(201).json({ success: true, message: 'product updated successfully'});
+        }
    }
    catch(error){
-        console.log(`product port error : ${error}`);
+        await Promise.allSettled(uploadedImages.map(deleteProductImage));
+        console.error(`product update error: ${error.message}`);
+        return res.status(500).json({ success: false, error: 'Unable to update product.' });
    }
 }
 
@@ -192,7 +181,10 @@ exports.productImageDelete = async ( req, res ) => {
     try{
         if(!imageUrl || !productId) return res.status(400).json({ success: false, error: 'product image or product not found in db'});
         const result = await productModel.findByIdAndUpdate(productId, { $pull: { images: imageUrl }});
-        if(result) return res.status(200).json({ success: true, message: 'Image removed from product details.'});
+        if(result) {
+            await deleteProductImage(imageUrl);
+            return res.status(200).json({ success: true, message: 'Image removed from product details.'});
+        }
     }catch(err){
         console.log(err);
     }

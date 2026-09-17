@@ -248,35 +248,34 @@ function failureMessage(message) {
 const btnWallet = document.querySelector('.btn-wallet');
 btnWallet.addEventListener('click', (event) => {
     const amount = document.querySelector('#wallet-amount').value;
-    if(amount <= 0 ) failureMessage('Amount must be greater than zero');
-    const userId = event.target.getAttribute('data-user-id');
-    console.log(userId)
-    razorpay( userId, +amount);
+    if(amount <= 0 ) return failureMessage('Amount must be greater than zero');
+    razorpay(+amount);
 })
 
-function razorpay( userId, amount){
+function razorpay(amount){
     try{
 
         $(document).ready(function() {
             $.ajax({
-          url: "/create/orderId",
+          url: "/wallet/top-ups",
           method: "POST",
-          data: JSON.stringify({ amount: amount*100 }),
+          data: JSON.stringify({ amount }),
           contentType: "application/json",
           success: function(response) {
             orderId = response.orderId;
             $("button").show();
       
             var options = {
-              "key": "rzp_test_sHq1xf34I99z5x",
-              "amount": amount*100,
-              "currency": "USD",
+              "key": response.keyId,
+              "amount": response.amount,
+              "currency": response.currency,
               "name": "Margin",
               "description": "Test Transaction",
               "image": "https://example.com/your_logo",
               "order_id": orderId,
               "handler": function(response) {
-                addWalletAmount( userId, amount);
+                Swal.fire({ text: 'Payment received. Your wallet will update once payment confirmation is processed.', icon: 'success' })
+                  .then(() => { window.location.href = '/dashboard'; });
               },
               "prefill": {
                 "name": "Muhammed Alishan",
@@ -303,6 +302,9 @@ function razorpay( userId, amount){
             });
     
             rzp1.open();
+          },
+          error: function(xhr) {
+            failureMessage(xhr.responseJSON?.error || 'Unable to start wallet top-up');
           }
         });
       });
@@ -311,24 +313,3 @@ function razorpay( userId, amount){
         alertMessageError(err);
     }
 }
-
-
-
-async function addWalletAmount(userId, amount) {
-    try {
-      const response = await fetch(`/wallet/${userId}/${amount}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      const body = await response.json();
-      if (body.error) {
-        return failureMessage(body.error);
-      } else {
-        window.location.href = '/dashboard';
-      }
-    } catch (err) {
-      console.log(err);
-    }
-  }

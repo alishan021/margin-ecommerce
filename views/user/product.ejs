@@ -43,7 +43,7 @@
                                 <div class="product-gallery product-gallery-vertical">
                                     <div class="row">
                                         <figure class="product-main-image">
-                                            <img id="product-zoom" src="/products/<%= product.images[0] %>" data-zoom-image="assets/images/products/single/1-big.jpg" alt="product image" class="px-5 py-5" >
+                                            <img id="product-zoom" src="<%= productImageUrl(product.images[0]) %>" data-zoom-image="<%= productImageUrl(product.images[0]) %>" alt="product image" class="px-5 py-5" >
 
                                             <a href="#" id="btn-product-gallery" class="btn-product-gallery">
                                                 <i class="icon-arrows"></i>
@@ -54,8 +54,8 @@
 
                                             <% product.images.forEach( (item, index ) => { %>
                                                 
-                                                <a class="product-gallery-item active" href="#" data-image="/user/assets/images/products/single/1.jpg" data-zoom-image="assets/images/products/single/1-big.jpg">
-                                                    <img src="/products/<%= item %>" alt="product side" class="single-product">
+                                                <a class="product-gallery-item active" href="#" data-image="<%= productImageUrl(item) %>" data-zoom-image="<%= productImageUrl(item) %>">
+                                                    <img src="<%= productImageUrl(item) %>" alt="product side" class="single-product">
                                                 </a>
                                                 
                                             <% }); %>
@@ -206,7 +206,7 @@
                 <div class="col-6">
                     <figure class="product-media">
                         <a href="product.html">
-                            <img src="/products/<%= product.images[0] %>" alt="Product image">
+                            <img src="<%= productImageUrl(product.images[0]) %>" alt="Product image">
                         </a>
                     </figure><!-- End .product-media -->
                     <h4 class="product-title"><a href="product.html"><%= product.name %></a></h4><!-- End .product-title -->

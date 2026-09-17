@@ -107,7 +107,7 @@ async function razorpay(orderId, productTotal, userId){
             "image": "https://example.com/your_logo",
             "order_id": orderId,
             "handler": function(response) {
-              const result = rzrPaymentAgain( userId, orderId );
+              const result = rzrPaymentAgain(orderId, response);
               if(result) setTimeout(() => window.location.reload(), 1000);
               else return false;
             },
@@ -141,13 +141,17 @@ async function razorpay(orderId, productTotal, userId){
 
   
   
-async function rzrPaymentAgain( userId, rzr_orderId ) {
+async function rzrPaymentAgain(rzr_orderId, providerResponse) {
   const response = await fetch('/payment-pending', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ userId, rzr_orderId })
+    body: JSON.stringify({
+      rzr_orderId,
+      razorpayPaymentId: providerResponse.razorpay_payment_id,
+      razorpaySignature: providerResponse.razorpay_signature,
+    })
   });
   const body = await response.json();
   if(body.error) {
@@ -206,4 +210,3 @@ function failureMessage(message) {
   });
   return;
 }
-
