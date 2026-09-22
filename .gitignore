@@ -5,3 +5,6 @@ routes
 uploads
 img-for-upload
 list of vulnerabilities.md
+.vercel
+.env*
+!.env.example

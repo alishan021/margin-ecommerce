@@ -2,12 +2,14 @@ const { v2: cloudinary } = require('cloudinary');
 
 const productFolder = process.env.CLOUDINARY_PRODUCT_FOLDER || 'margin/products';
 
-cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure: true,
-});
+cloudinary.config(
+    // {
+    //     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    //     api_key: process.env.CLOUDINARY_API_KEY,
+    //     api_secret: process.env.CLOUDINARY_API_SECRET,
+    //     secure: true,
+    // }
+);
 
 function assertCloudinaryConfigured() {
     const hasIndividualCredentials = process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET;

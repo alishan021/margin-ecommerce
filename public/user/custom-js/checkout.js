@@ -209,29 +209,43 @@ function failureMessage(message) {
 
 
 async function razorpay(){
-$(document).ready(function() {
-    $.ajax({
-      url: "/create/orderId",
-      method: "POST",
-      data: JSON.stringify({ amount: productTotal*100 }),
-      contentType: "application/json",
-      success: function(response) {
-        orderId = response.orderId;
+  try {
+    await loadRazorpayCheckout();
+    const createOrderResponse = await fetch('/api/create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ couponCode: formData.couponCode }),
+    });
+    const response = await createOrderResponse.json();
+    if (!createOrderResponse.ok || response.error) return failureMessage(response.error || 'Unable to create payment order.');
+
+        const orderId = response.order_id;
         $("button").show();
   
         var options = {
-          "key": response.keyId,
+          "key": response.key_id,
           "amount": response.amount,
           "currency": response.currency,
           "name": "Margin",
           "description": "Test Transaction",
           "image": "https://example.com/your_logo",
           "order_id": orderId,
-          "handler": function(response) {
+          "handler": async function(providerResponse) {
+            const verificationResponse = await fetch('/api/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_payment_id: providerResponse.razorpay_payment_id,
+                razorpay_order_id: providerResponse.razorpay_order_id,
+                razorpay_signature: providerResponse.razorpay_signature,
+              }),
+            });
+            const verification = await verificationResponse.json();
+            if (!verificationResponse.ok || verification.error) return failureMessage(verification.error || 'Payment could not be verified.');
             checkoutSend(userId, {
               ...formData,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
+              razorpayPaymentId: providerResponse.razorpay_payment_id,
+              razorpaySignature: providerResponse.razorpay_signature,
             }, orderId);
           },
           "prefill": {
@@ -242,19 +256,44 @@ $(document).ready(function() {
           "notes": {
             "address": "Razorpay Corporate Office"
           },
+          "config": {
+            "display": {
+              "blocks": {
+                "upi_block": {
+                  "name": "Pay via UPI",
+                  "instruments": [{ "method": "upi" }]
+                },
+                "cards": {
+                  "name": "Cards",
+                  "instruments": [{ "method": "card" }]
+                },
+                "netbanking": {
+                  "name": "Netbanking",
+                  "instruments": [{ "method": "netbanking" }]
+                },
+                "wallets": {
+                  "name": "Wallets",
+                  "instruments": [{ "method": "wallet" }]
+                }
+              },
+              "sequence": ["block.upi", "block.cards", "block.netbanking", "block.wallets"],
+              "preferences": {
+                "show_default_blocks": true
+              }
+            }
+          },
           "theme": {
             "color": "#3399cc"
+          },
+          "modal": {
+            "ondismiss": function() {}
           }
         };
   
         var rzp1 = new Razorpay(options);
 
-        rzp1.on('payment.failed', async function(response) {
-          failureMessage('Payment Failed');
-          const confi = await confirmIt("Payment Failed, Save it as Pending in Order's page, or continue with other payment methods", "save as pending")
-          if(confi.isConfirmed) {
-            await rzrErrorOrderPending(userId, response.error.metadata.order_id );
-          }else return;
+        rzp1.on('payment.failed', function(response) {
+          failureMessage(response.error && response.error.description ? response.error.description : 'Payment failed. Please try again.');
         });
 
         rzp1.on('payment.error', function (response) {
@@ -262,9 +301,20 @@ $(document).ready(function() {
         });
 
         rzp1.open();
-      }
-    });
-  });
+  } catch (err) {
+    console.log(err);
+    failureMessage('Unable to start Razorpay checkout. Please try again.');
+  }
   return true;
 }
 
+function loadRazorpayCheckout() {
+  if (window.Razorpay) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Unable to load Razorpay Checkout.'));
+    document.head.appendChild(script);
+  });
+}

@@ -92,39 +92,8 @@ router.post('/payment-pending', userAuth.userSessionNo, userController.paymentPe
 
 
 
-const Razorpay = require('razorpay');
-var instance = new Razorpay({ key_id: process.env.RAZORPAY_KEYID, key_secret: process.env.RAZORPAY_KEYSECRET })
-
-
-
-router.post('/create/orderId', userAuth.userSessionNo, (req, res) => {
-  console.log('Creating order using Razorpay');
-
-  // Get the order details from the request body
-  const amount = Number(req.body.amount);
-  if (!Number.isSafeInteger(amount) || amount < 100) {
-    return res.status(400).json({ error: 'A valid payment amount is required.' });
-  }
-
-  // Create the order options
-  const options = {
-    amount: amount, // Amount in the smallest currency unit
-    currency: "INR",
-    receipt: "order_rcptid_11" // Unique order receipt ID
-  };
-
-  // Create the order using the Razorpay instance
-  instance.orders.create(options, (err, order) => {
-    if (err) {
-      console.error('Error creating Razorpay order:', err);
-      console.log('Complete Error Object:', err);
-      return res.status(500).json({ error: 'Error creating order' });
-    }
-
-    console.log('Razorpay order created:', order);
-    return res.status(200).json({ orderId: order.id, amount: order.amount, currency: order.currency, keyId: process.env.RAZORPAY_KEYID });
-  });
-});
+router.post('/api/create-order', userAuth.userSessionNo, userController.createRazorpayOrder);
+router.post('/api/verify-payment', userAuth.userSessionNo, userController.verifyRazorpayPayment);
 
 
 

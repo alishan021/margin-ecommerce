@@ -247,69 +247,59 @@ function failureMessage(message) {
 
 const btnWallet = document.querySelector('.btn-wallet');
 btnWallet.addEventListener('click', (event) => {
-    const amount = document.querySelector('#wallet-amount').value;
-    if(amount <= 0 ) return failureMessage('Amount must be greater than zero');
-    razorpay(+amount);
+    const amount = Number(document.querySelector('#wallet-amount').value);
+    if (!Number.isInteger(amount) || amount <= 0) return failureMessage('Enter a whole amount greater than zero');
+    razorpayWalletTopUp(amount);
 })
 
-function razorpay(amount){
-    try{
+async function razorpayWalletTopUp(amount) {
+  try {
+    await loadRazorpayCheckout();
+    const response = await fetch('/wallet/top-ups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount }),
+    });
+    const body = await response.json();
+    if (!response.ok || body.error) return failureMessage(body.error || 'Unable to start wallet top-up');
 
-        $(document).ready(function() {
-            $.ajax({
-          url: "/wallet/top-ups",
-          method: "POST",
-          data: JSON.stringify({ amount }),
-          contentType: "application/json",
-          success: function(response) {
-            orderId = response.orderId;
-            $("button").show();
-      
-            var options = {
-              "key": response.keyId,
-              "amount": response.amount,
-              "currency": response.currency,
-              "name": "Margin",
-              "description": "Test Transaction",
-              "image": "https://example.com/your_logo",
-              "order_id": orderId,
-              "handler": function(response) {
-                Swal.fire({ text: 'Payment received. Your wallet will update once payment confirmation is processed.', icon: 'success' })
-                  .then(() => { window.location.href = '/dashboard'; });
-              },
-              "prefill": {
-                "name": "Muhammed Alishan",
-                "email": "alishan.example@gmail.com",
-                "contact": "0000000000"
-              },
-              "notes": {
-                "address": "Razorpay Corporate Office"
-              },
-              "theme": {
-                "color": "#3399cc"
-              }
-            };
-            
-            var rzp1 = new Razorpay(options);
-    
-            rzp1.on('payment.failed', function(response) {
-              failureMessage('Payment Failed');
-            });
-    
-            rzp1.on('payment.error', function (response) {
-                failureMessage('payment error')
-                console.log('Payment error:', response.error);
-            });
-    
-            rzp1.open();
-          },
-          error: function(xhr) {
-            failureMessage(xhr.responseJSON?.error || 'Unable to start wallet top-up');
-          }
-        });
-      });
-      return true;
-    }catch(err){
-        alertMessageError(err);
-    }
+    const checkout = new Razorpay({
+      key: body.key_id,
+      amount: body.amount,
+      currency: body.currency,
+      name: 'Margin',
+      description: 'Wallet top-up',
+      order_id: body.order_id,
+      handler: function() {
+        Swal.fire({ text: 'Payment received. Your wallet will update once payment confirmation is processed.', icon: 'success' })
+          .then(() => { window.location.href = '/dashboard'; });
+      },
+      prefill: {
+        name: 'Muhammed Alishan',
+        email: 'alishan.example@gmail.com',
+        contact: '0000000000',
+      },
+      notes: { purpose: 'wallet_top_up' },
+      theme: { color: '#3399cc' },
+      modal: { ondismiss: function() {} },
+    });
+    checkout.on('payment.failed', function(providerResponse) {
+      failureMessage(providerResponse.error && providerResponse.error.description ? providerResponse.error.description : 'Payment failed. Please try again.');
+    });
+    checkout.open();
+  } catch (error) {
+    console.error('Unable to start wallet top-up:', error);
+    failureMessage('Unable to start wallet top-up');
+  }
+}
+
+function loadRazorpayCheckout() {
+  if (window.Razorpay) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Unable to load Razorpay Checkout.'));
+    document.head.appendChild(script);
+  });
 }

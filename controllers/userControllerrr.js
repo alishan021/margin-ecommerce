@@ -630,6 +630,113 @@ async function getProductDetails(cart) {
     return productDetails;
 }
 
+function getRazorpayConfig() {
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keyId || !keySecret) {
+        const missingVariable = !keyId ? 'RAZORPAY_KEY_ID' : 'RAZORPAY_KEY_SECRET';
+        console.error(`Payment provider misconfigured: missing ${missingVariable}`);
+        return null;
+    }
+    return { keyId, keySecret };
+}
+
+async function getCheckoutTotals(user, couponCode) {
+    const productDetails = await getProductDetails(user.cart);
+    let subtotal = 0;
+    productDetails.forEach((item) => {
+        const itemPrice = item.product ? (item.product.discountPrice || 1) : 0;
+        subtotal += itemPrice * item.count;
+    });
+
+    const coupon = await applyCheckoutCoupon(user._id, couponCode, subtotal);
+    const deliveryCharge = coupon.total < 500 ? Number(process.env.DELIVERY_CHARGE) : 0;
+    return {
+        productDetails,
+        originalPrice: subtotal,
+        totalPrice: coupon.total + (Number.isFinite(deliveryCharge) ? deliveryCharge : 0),
+        coupon,
+    };
+}
+
+function waitForRetry(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+exports.createRazorpayOrder = async (req, res) => {
+    const razorpayConfig = getRazorpayConfig();
+    if (!razorpayConfig) return res.status(500).json({ error: 'payment provider misconfigured' });
+
+    try {
+        const user = await userModel.findById(req.session.user._id);
+        if (!user) return res.status(400).json({ error: 'User not found. Please log in again.' });
+
+        const { totalPrice } = await getCheckoutTotals(user, req.body.couponCode);
+        const amount = Math.round(totalPrice * 100);
+        if (!Number.isSafeInteger(amount) || amount < 100) {
+            return res.status(400).json({ error: 'A valid payment amount is required.' });
+        }
+
+        const razorpay = new Razorpay({ key_id: razorpayConfig.keyId, key_secret: razorpayConfig.keySecret });
+        let providerOrder;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+                providerOrder = await razorpay.orders.create({
+                    amount,
+                    currency: 'INR',
+                    receipt: `checkout_${crypto.randomBytes(12).toString('hex')}`,
+                });
+                break;
+            } catch (error) {
+                const statusCode = error.statusCode || error.status;
+                if (statusCode === 401) {
+                    console.error('Payment provider configuration error');
+                    return res.status(500).json({ error: 'payment provider misconfigured' });
+                }
+                if (statusCode === 400) {
+                    return res.status(400).json({ error: error.description || 'Unable to create payment order.' });
+                }
+                if (attempt === 2) {
+                    console.error('Payment provider unavailable:', error.message);
+                    return res.status(503).json({ error: 'Payment provider is temporarily unavailable.' });
+                }
+                await waitForRetry((attempt + 1) * 200);
+            }
+        }
+
+        return res.status(200).json({
+            order_id: providerOrder.id,
+            amount: providerOrder.amount,
+            currency: providerOrder.currency,
+            key_id: razorpayConfig.keyId,
+        });
+    } catch (error) {
+        console.error('Unable to create Razorpay order:', error.message);
+        return res.status(500).json({ error: 'Unable to create payment order.' });
+    }
+};
+
+exports.verifyRazorpayPayment = async (req, res) => {
+    const razorpayConfig = getRazorpayConfig();
+    if (!razorpayConfig) return res.status(500).json({ error: 'payment provider misconfigured' });
+
+    const { razorpay_payment_id: paymentId, razorpay_order_id: providerOrderId, razorpay_signature: signature } = req.body;
+    if (!providerOrderId || !paymentId || !signature) {
+        return res.status(400).json({ error: 'Missing payment verification fields.' });
+    }
+
+    const expectedSignature = crypto.createHmac('sha256', razorpayConfig.keySecret)
+        .update(`${providerOrderId}|${paymentId}`)
+        .digest('hex');
+    const actualSignature = Buffer.from(signature, 'utf8');
+    const expectedSignatureBuffer = Buffer.from(expectedSignature, 'utf8');
+    if (actualSignature.length !== expectedSignatureBuffer.length || !crypto.timingSafeEqual(actualSignature, expectedSignatureBuffer)) {
+        return res.status(400).json({ error: 'Payment could not be verified.' });
+    }
+
+    return res.status(200).json({ success: true });
+};
+
 
 
 
@@ -902,25 +1009,14 @@ exports.checkoutPost = async (req, res) => {
         return res.status(400).json({ success: false, error: validationResult.message, hai: 'hai' });
       }
   
-      const productDetails = await getProductDetails(user.cart);
-  
-      let totalPrice = 0;
-      productDetails.forEach((item, index) => {
-        const itemPrice = item.product ? (item.product.discountPrice || 1) : 0;
-        totalPrice += itemPrice * item.count;
-      });
-      let originalPrice = totalPrice;
-      const coupon = await applyCheckoutCoupon(user._id, req.body.couponCode, totalPrice);
-      totalPrice = coupon.total;
+      const { productDetails, originalPrice, totalPrice, coupon } = await getCheckoutTotals(user, req.body.couponCode);
 
       if(totalPrice > 1000 && req.body.paymentMethod === 'COD' ) return res.status(400).json({ success: false, error: 'Cash On Delivery is not available for products more than 1000Rs'});
-      if(totalPrice < 500 ) totalPrice += parseInt(process.env.DELIVERY_CHARGE);
       if (req.body.paymentMethod === 'razorpay') {
         const paymentIsVerified = await verifyRazorpayPayment({
           providerOrderId: req.body.orderId,
           paymentId: req.body.razorpayPaymentId,
           signature: req.body.razorpaySignature,
-          expectedAmount: Math.round(totalPrice * 100),
         });
         if (!paymentIsVerified) return res.status(400).json({ error: 'Payment could not be verified.' });
       }
@@ -1225,19 +1321,17 @@ exports.orderReturnPatch = async (req, res) => {
 const MIN_WALLET_TOP_UP_RUPEES = 1;
 const MAX_WALLET_TOP_UP_RUPEES = 100000;
 
-async function verifyRazorpayPayment({ providerOrderId, paymentId, signature, expectedAmount }) {
-    if (!providerOrderId || !paymentId || !signature || !Number.isSafeInteger(expectedAmount)) return false;
+async function verifyRazorpayPayment({ providerOrderId, paymentId, signature }) {
+    const razorpayConfig = getRazorpayConfig();
+    if (!razorpayConfig || !providerOrderId || !paymentId || !signature) return false;
 
-    const expectedSignature = crypto.createHmac('sha256', process.env.RAZORPAY_KEYSECRET)
+    const expectedSignature = crypto.createHmac('sha256', razorpayConfig.keySecret)
         .update(`${providerOrderId}|${paymentId}`).digest('hex');
     const actualSignature = Buffer.from(signature, 'utf8');
     const expectedSignatureBuffer = Buffer.from(expectedSignature, 'utf8');
     if (actualSignature.length !== expectedSignatureBuffer.length || !crypto.timingSafeEqual(actualSignature, expectedSignatureBuffer)) return false;
 
-    const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEYID, key_secret: process.env.RAZORPAY_KEYSECRET });
-    const payment = await razorpay.payments.fetch(paymentId);
-    return payment.status === 'captured' && payment.order_id === providerOrderId
-        && payment.amount === expectedAmount && payment.currency === 'INR';
+    return true;
 }
 
 async function applyCheckoutCoupon(userId, couponCode, subtotal) {
@@ -1257,6 +1351,9 @@ async function applyCheckoutCoupon(userId, couponCode, subtotal) {
 }
 
 exports.createWalletTopUp = async (req, res) => {
+    const razorpayConfig = getRazorpayConfig();
+    if (!razorpayConfig) return res.status(500).json({ error: 'payment provider misconfigured' });
+
     try {
         if (!req.session.user?._id) {
             return res.status(401).json({ error: 'Please log in again.' });
@@ -1266,21 +1363,37 @@ exports.createWalletTopUp = async (req, res) => {
             return res.status(400).json({ error: `Amount must be a whole number between ${MIN_WALLET_TOP_UP_RUPEES} and ${MAX_WALLET_TOP_UP_RUPEES} rupees.` });
         }
 
-        if (!process.env.RAZORPAY_KEYID || !process.env.RAZORPAY_KEYSECRET) {
-            return res.status(503).json({ error: 'Wallet top-ups are not configured.' });
-        }
-
         const amount = amountRupees * 100;
         const razorpay = new Razorpay({
-            key_id: process.env.RAZORPAY_KEYID,
-            key_secret: process.env.RAZORPAY_KEYSECRET,
+            key_id: razorpayConfig.keyId,
+            key_secret: razorpayConfig.keySecret,
         });
-        const providerOrder = await razorpay.orders.create({
-            amount,
-            currency: 'INR',
-            receipt: `wallet_${crypto.randomBytes(16).toString('hex')}`,
-            notes: { purpose: 'wallet_top_up', userId: req.session.user._id.toString() },
-        });
+        let providerOrder;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+                providerOrder = await razorpay.orders.create({
+                    amount,
+                    currency: 'INR',
+                    receipt: `wallet_${crypto.randomBytes(12).toString('hex')}`,
+                    notes: { purpose: 'wallet_top_up', userId: req.session.user._id.toString() },
+                });
+                break;
+            } catch (error) {
+                const statusCode = error.statusCode || error.status;
+                if (statusCode === 401) {
+                    console.error('Payment provider configuration error');
+                    return res.status(500).json({ error: 'payment provider misconfigured' });
+                }
+                if (statusCode === 400) {
+                    return res.status(400).json({ error: error.description || 'Unable to create wallet top-up.' });
+                }
+                if (attempt === 2) {
+                    console.error('Payment provider unavailable:', error.message);
+                    return res.status(503).json({ error: 'Payment provider is temporarily unavailable.' });
+                }
+                await waitForRetry((attempt + 1) * 200);
+            }
+        }
 
         const topUp = await walletTopUpModel.create({
             userId: req.session.user._id,
@@ -1290,14 +1403,14 @@ exports.createWalletTopUp = async (req, res) => {
         });
 
         return res.status(201).json({
-            topUpId: topUp._id,
-            orderId: providerOrder.id,
+            top_up_id: topUp._id,
+            order_id: providerOrder.id,
             amount: providerOrder.amount,
             currency: providerOrder.currency,
-            keyId: process.env.RAZORPAY_KEYID,
+            key_id: razorpayConfig.keyId,
         });
     } catch (error) {
-        console.error('Unable to create wallet top-up:', error);
+        console.error('Unable to create wallet top-up:', error.message);
         return res.status(500).json({ error: 'Unable to start wallet top-up.' });
     }
 };

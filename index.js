@@ -7,11 +7,11 @@ const session = require('express-session');
 const cors = require('cors');
 const nocache = require("nocache");
 const cookieParser = require('cookie-parser');
-const Razorpay = require('razorpay');
 const productModel = require('./models/products.js');
 
 
 const app = express();
+
 
 app.set('view engine', 'ejs');
 app.set('views', ['./views/admin', './views/user' ]);
@@ -37,15 +37,6 @@ app.use(session({
 app.use(cookieParser());
 // app.use(express.bodyPaser());
 app.use(bodyParser.urlencoded({ extended: false }))
-
-
-var instance = new Razorpay({
-    key_id: process.env.RAZORPAY_KEYID,
-    key_secret: process.env.RAZORPAY_KEYSECRET,
-});
-
-
-
 app.use('/', require('./routes/userRoute.js') );
 app.use('/admin', require('./routes/adminRoute.js'));
 
