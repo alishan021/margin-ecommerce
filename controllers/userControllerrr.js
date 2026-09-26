@@ -236,11 +236,14 @@ exports.loginPost = async (req, res) => {
 
 
 
-exports.userLogout = ( req, res ) => {
-    delete req.session.userIn;
-    delete req.session.user;
-    res.redirect(`/`);
-}
+exports.userLogout = (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+    }
+    res.redirect('/');
+  });
+};
 
 
 
