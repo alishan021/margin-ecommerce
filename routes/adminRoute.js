@@ -14,6 +14,19 @@ const userModel = require('../models/user');
 const categoryModel = require('../models/category');
 const orderModel = require('../models/order');
 const productModel = require('../models/products');
+const { completeController } = require('../middlewares/completeHandler');
+
+[
+    adminController,
+    admProductController,
+    admUserController,
+    admCategoryController,
+    admOrdersController,
+    admCouponController,
+    admSalesReportController,
+    admOfferModule,
+    adminAuth,
+].forEach(completeController);
 
 const router = express.Router();
 

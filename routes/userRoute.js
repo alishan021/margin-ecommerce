@@ -10,6 +10,10 @@ const userModel = require('../models/user');
 // const { render } = require('ejs');
 const productModel = require('../models/products');
 const orderModel = require('../models/order');
+const { completeController } = require('../middlewares/completeHandler');
+
+completeController(userController);
+completeController(userAuth);
 
 const router = express.Router();
 

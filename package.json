@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "test",
-    "start": "node --watch server.js",
-    "dev": "nodemon server.js",
+    "dev": "node --watch index.js",
+    "start": "node index.js",
     "migrate:product-images": "node scripts/migrateProductImagesToCloudinary.js"
   },
   "repository": {
